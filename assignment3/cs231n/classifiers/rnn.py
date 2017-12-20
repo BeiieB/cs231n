@@ -139,11 +139,17 @@ class CaptioningRNN(object):
         ############################################################################
         h0, affine_cache = affine_forward(features, W_proj, b_proj)
         word_vec, embed_cache = word_embedding_forward(captions_in, W_embed)
-        h, rnn_cache = rnn_forward(word_vec, h0, Wx, Wh, b)
+        if self.cell_type == 'rnn':
+            h, rnn_cache = rnn_forward(word_vec, h0, Wx, Wh, b)
+        else:
+            h, lstm_cache = lstm_forward(word_vec, h0, Wx, Wh, b)
         score, temporal_cache = temporal_affine_forward(h, W_vocab, b_vocab)
         loss, dout = temporal_softmax_loss(score, captions_out, mask, verbose=False)
         dh, grads['W_vocab'], grads['b_vocab'] = temporal_affine_backward(dout, temporal_cache)
-        dword, dh0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dh, rnn_cache)
+        if self.cell_type == 'rnn':
+            dword, dh0, grads['Wx'], grads['Wh'], grads['b'] = rnn_backward(dh, rnn_cache)
+        else:
+            dword, dh0, grads['Wx'], grads['Wh'], grads['b'] = lstm_backward(dh, lstm_cache)
         grads['W_embed'] = word_embedding_backward(dword, embed_cache)
         dfeature, grads['W_proj'], grads['b_proj'] = affine_backward(dh0, affine_cache)
         ############################################################################
@@ -209,10 +215,15 @@ class CaptioningRNN(object):
         ###########################################################################
         prev_h, affine_cache = affine_forward(features, W_proj, b_proj)
         word_in = self._start
+        if self.cell_type == 'lstm':
+            prev_c = np.zeros_like(prev_h)
         for t in range(max_length):
             captions[:, t] = word_in
             word_vec, embed_cache = word_embedding_forward(word_in, W_embed)
-            prev_h, rnn_cache = rnn_step_forward(word_vec, prev_h, Wx, Wh, b)
+            if self.cell_type == 'rnn':
+                prev_h, rnn_cache = rnn_step_forward(word_vec, prev_h, Wx, Wh, b)
+            else:
+                prev_h, prev_c, rnn_cache = lstm_step_forward(word_vec, prev_h, prev_c, Wx, Wh, b)
             score, temporal_cache = affine_forward(prev_h, W_vocab, b_vocab)
             word_in = np.argmax(score, axis=1)
         ############################################################################
